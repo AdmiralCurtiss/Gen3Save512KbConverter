@@ -33,7 +33,40 @@ namespace HyoutaTools.Pokemon.Gen3 {
             public Page[] Pages = new Page[0xE];
         }
 
-        public static PageType IdentifyPageType( Stream data, int sourcePosition, long fileSize ) {
+        public static PageType IdentifyPageType( Stream data, int sourcePosition, long fileSize, SaveFormat sourceFormat ) {
+            if ( sourceFormat == SaveFormat.Save512K ) {
+                // forcing 512K layout
+                switch ( sourcePosition ) {
+                    case 0xE000:
+                        Console.WriteLine( "Assuming page at 0x" + sourcePosition.ToString( "X5" ) + " is a hall of fame block." );
+                        return PageType.HallOfFame;
+                    case 0xF000:
+                        Console.WriteLine( "Assuming page at 0x" + sourcePosition.ToString( "X5" ) + " is a battle recording block." );
+                        return PageType.BattleRecording;
+                    default:
+                        Console.WriteLine( "Assuming page at 0x" + sourcePosition.ToString( "X5" ) + " is a main save block." );
+                        return PageType.MainSave;
+                }
+            }
+            if ( sourceFormat == SaveFormat.Save1M ) {
+                // forcing 1M layout
+                switch ( sourcePosition ) {
+                    case 0x1C000:
+                    case 0x1D000:
+                        Console.WriteLine( "Assuming page at 0x" + sourcePosition.ToString( "X5" ) + " is a hall of fame block." );
+                        return PageType.HallOfFame;
+                    case 0x1E000:
+                        Console.WriteLine( "Assuming page at 0x" + sourcePosition.ToString( "X5" ) + " is a Trainer Hill block." );
+                        return PageType.TrainerHill;
+                    case 0x1F000:
+                        Console.WriteLine( "Assuming page at 0x" + sourcePosition.ToString( "X5" ) + " is a battle recording block." );
+                        return PageType.BattleRecording;
+                    default:
+                        Console.WriteLine( "Assuming page at 0x" + sourcePosition.ToString( "X5" ) + " is a main save block." );
+                        return PageType.MainSave;
+                }
+            }
+
             long origin = data.Position;
             data.Position = origin + 0xF80;
             ushort readChecksumBattleRecording = data.ReadUInt16(); // maybe??
@@ -117,26 +150,40 @@ namespace HyoutaTools.Pokemon.Gen3 {
 
         public static int Execute( List<string> args ) {
             if ( args.Count < 1 ) {
-                Console.WriteLine( "Usage: [--to1M/--to512K] pokemon-emerald.sav [pokemon-emerald-converted.sav]" );
+                Console.WriteLine( "Usage: [--to1M/--to512K] [--forceInputLayout1M/--forceInputLayout512K] pokemon-emerald.sav [pokemon-emerald-converted.sav]" );
                 return -1;
             }
 
             try {
                 SaveFormat targetFormat = SaveFormat.Autodetect;
+                SaveFormat sourceFormat = SaveFormat.Autodetect;
                 int argcnt = 0;
-                if ( args[argcnt].StartsWith( "--" ) ) {
+                while ( args[argcnt].StartsWith( "--" ) ) {
+                    bool exitArgs = false;
                     switch ( args[argcnt].ToLowerInvariant() ) {
+                        case "--":
+                            exitArgs = true;
+                            break;
                         case "--to1m":
                             targetFormat = SaveFormat.Save1M;
                             break;
                         case "--to512k":
                             targetFormat = SaveFormat.Save512K;
                             break;
+                        case "--forceinputlayout1m":
+                            sourceFormat = SaveFormat.Save1M;
+                            break;
+                        case "--forceinputlayout512k":
+                            sourceFormat = SaveFormat.Save512K;
+                            break;
                         default:
                             Console.WriteLine( "Unrecognized option '" + args[argcnt] + "'." );
                             break;
                     }
                     ++argcnt;
+                    if ( exitArgs ) {
+                        break;
+                    }
                 }
 
                 List<Page> pages = new List<Page>( 0x20 );
@@ -149,7 +196,7 @@ namespace HyoutaTools.Pokemon.Gen3 {
                         MemoryStream ms = new MemoryStream( 0x1000 );
                         Util.CopyStream( file, ms, 0x1000 );
                         ms.Position = 0;
-                        PageType type = IdentifyPageType( ms, i, file.Length );
+                        PageType type = IdentifyPageType( ms, i, file.Length, sourceFormat );
                         pages.Add( new Page() { Data = ms, Type = type, SourcePosition = i } );
                     }
                 }
